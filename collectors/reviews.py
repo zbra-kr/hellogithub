@@ -13,103 +13,122 @@ def _now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _get_brand_product_ids_musinsa(brand_id: str, limit: int = 3) -> list[str]:
-    """무신사에서 브랜드의 상품 ID 목록 조회"""
+def _find_product_ids_via_search(brand_id: str, brand_name: str, limit: int = 3) -> list[str]:
+    """무신사 검색으로 자사 브랜드 상품 ID 수집"""
     product_ids = []
-    url = f"https://www.musinsa.com/brands/{brand_id}/goods"
-    try:
-        resp = requests.get(url, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-        links = soup.select("a[href*='/products/']")
-        seen = set()
-        for link in links:
-            href = link.get("href", "")
-            match = re.search(r"/products/(\d+)", href)
-            if match:
-                pid = match.group(1)
-                if pid not in seen:
-                    seen.add(pid)
-                    product_ids.append(pid)
-                if len(product_ids) >= limit:
-                    break
-    except Exception:
-        pass
-    return product_ids
+    headers = {**REQUEST_HEADERS, "Referer": "https://www.musinsa.com/"}
+    urls = [
+        f"https://www.musinsa.com/brands/{brand_id}/goods",
+        f"https://www.musinsa.com/search/musinsa/goods?q={requests.utils.quote(brand_name)}&sortCode=NEWEST",
+    ]
+    for url in urls:
+        try:
+            resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+            if resp.status_code in (404, 410):
+                continue
+            resp.raise_for_status()
 
-
-def collect_musinsa_reviews(log_callback=None) -> list[dict]:
-    """무신사 자사 브랜드 상품 리뷰 수집"""
-    all_results = []
-
-    for brand in OWN_BRANDS:
-        brand_name = brand["name"]
-        brand_id = brand["musinsa_id"]
-        if log_callback:
-            log_callback(f"[리뷰] 무신사 {brand_name} 상품 조회 중...")
-
-        product_ids = _get_brand_product_ids_musinsa(brand_id, limit=3)
-        if not product_ids:
-            if log_callback:
-                log_callback(f"[리뷰] 무신사 {brand_name}: 상품 없음")
-            continue
-
-        for pid in product_ids:
-            # 리뷰 API 시도
-            review_urls = [
-                f"https://www.musinsa.com/products/{pid}/reviews",
-                f"https://goods.musinsa.com/review/list.json?goodsNo={pid}&page=1&pageSize=10",
-            ]
-            for rev_url in review_urls:
+            # __NEXT_DATA__에서 상품 번호 추출
+            m = re.search(r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(.*?)\s*</script>', resp.text, re.DOTALL)
+            if m:
                 try:
-                    resp = requests.get(rev_url, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT)
-                    if resp.status_code != 200:
-                        continue
+                    data = json.loads(m.group(1))
+                    # goodsNo가 포함된 객체 재귀 탐색
+                    nos = _extract_goods_nos(data)
+                    product_ids.extend(nos[:limit])
+                except Exception:
+                    pass
 
-                    # JSON 응답 시도
-                    try:
-                        data = resp.json()
-                        review_list = (
-                            data.get("data", {}).get("list", []) or
-                            data.get("list", []) or
-                            data.get("reviews", [])
-                        )
-                        for review in review_list[:REVIEW_LIMIT]:
-                            all_results.append({
-                                "플랫폼": "무신사",
-                                "브랜드": brand_name,
-                                "상품명": review.get("goodsName", review.get("productName", "-")),
-                                "별점": str(review.get("starPoint", review.get("rating", "-"))),
-                                "리뷰내용": review.get("contents", review.get("content", "-"))[:200],
-                                "작성일": review.get("regDate", review.get("createdAt", "-")),
-                                "수집시각": _now(),
-                            })
-                        if review_list:
-                            break
-                    except Exception:
-                        pass
+            # HTML 폴백
+            if not product_ids:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                for link in soup.select("a[href*='/products/']")[:limit]:
+                    m2 = re.search(r"/products/(\d+)", link.get("href", ""))
+                    if m2 and m2.group(1) not in product_ids:
+                        product_ids.append(m2.group(1))
 
-                    # HTML 파싱 폴백
-                    soup = BeautifulSoup(resp.text, "html.parser")
-                    review_items = soup.select(
-                        "[class*='review-item'], [class*='ReviewItem'], "
-                        ".review_list li, [class*='review-list'] li"
-                    )
-                    prod_name_el = soup.select_one("h1[class*='title'], [class*='goods-name']")
-                    prod_name = prod_name_el.get_text(strip=True) if prod_name_el else "-"
+            if product_ids:
+                break
+        except Exception:
+            pass
+    return product_ids[:limit]
 
-                    for review in review_items[:REVIEW_LIMIT]:
-                        score_el = review.select_one(
-                            "[class*='star'], [class*='rating'], [class*='score']"
-                        )
-                        content_el = review.select_one(
-                            "[class*='content'], [class*='text'], p"
-                        )
-                        date_el = review.select_one(
-                            "[class*='date'], time"
-                        )
-                        all_results.append({
-                            "플랫폼": "무신사",
+
+def _extract_goods_nos(obj, result=None, depth=0) -> list[str]:
+    if result is None:
+        result = []
+    if depth > 8 or len(result) >= 5:
+        return result
+    if isinstance(obj, dict):
+        no = obj.get("goodsNo") or obj.get("itemNo") or obj.get("productId")
+        if no:
+            result.append(str(no))
+        for v in obj.values():
+            _extract_goods_nos(v, result, depth + 1)
+    elif isinstance(obj, list):
+        for item in obj:
+            _extract_goods_nos(item, result, depth + 1)
+    return result
+
+
+def _collect_reviews_for_product(pid: str, brand_name: str, platform: str) -> list[dict]:
+    """특정 상품 ID의 리뷰 수집"""
+    results = []
+    headers = {**REQUEST_HEADERS, "Referer": f"https://www.musinsa.com/products/{pid}"}
+
+    if platform == "무신사":
+        review_urls = [
+            f"https://goods.musinsa.com/review/list.json?goodsNo={pid}&page=1&pageSize=10",
+            f"https://www.musinsa.com/products/{pid}/reviews",
+        ]
+    else:
+        return results
+
+    for url in review_urls:
+        try:
+            resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+            if resp.status_code != 200:
+                continue
+
+            # JSON API 응답
+            try:
+                data = resp.json()
+                review_list = (
+                    data.get("data", {}).get("list") or
+                    data.get("list") or
+                    data.get("reviews") or []
+                )
+                for rev in review_list[:REVIEW_LIMIT]:
+                    results.append({
+                        "플랫폼": platform,
+                        "브랜드": brand_name,
+                        "상품명": rev.get("goodsName", rev.get("productName", "-")),
+                        "별점": str(rev.get("starPoint", rev.get("rating", "-"))),
+                        "리뷰내용": str(rev.get("contents", rev.get("content", "-")))[:200],
+                        "작성일": rev.get("regDate", rev.get("createdAt", "-")),
+                        "수집시각": _now(),
+                    })
+                if results:
+                    break
+            except ValueError:
+                pass
+
+            # HTML 파싱 폴백
+            soup = BeautifulSoup(resp.text, "html.parser")
+            prod_name_el = soup.select_one("h1,[class*='goods-name'],[class*='product-name']")
+            prod_name = prod_name_el.get_text(strip=True) if prod_name_el else "-"
+            for sel in [
+                "[class*='review-item']", "[class*='ReviewItem']",
+                ".review_list li", "[class*='review-list'] li",
+            ]:
+                items = soup.select(sel)
+                if items:
+                    for rev in items[:REVIEW_LIMIT]:
+                        score_el = rev.select_one("[class*='star'],[class*='rating'],[class*='score']")
+                        content_el = rev.select_one("[class*='content'],[class*='text'],p")
+                        date_el = rev.select_one("[class*='date'],time")
+                        results.append({
+                            "플랫폼": platform,
                             "브랜드": brand_name,
                             "상품명": prod_name,
                             "별점": score_el.get_text(strip=True) if score_el else "-",
@@ -117,12 +136,31 @@ def collect_musinsa_reviews(log_callback=None) -> list[dict]:
                             "작성일": date_el.get_text(strip=True) if date_el else "-",
                             "수집시각": _now(),
                         })
-                    if review_items:
-                        break
+                    break
+            if results:
+                break
+        except Exception:
+            pass
+    return results
 
-                except Exception as e:
-                    if log_callback:
-                        log_callback(f"[리뷰] 무신사 {brand_name} {pid} 오류: {e}")
+
+def collect_musinsa_reviews(log_callback=None) -> list[dict]:
+    all_results = []
+    for brand in OWN_BRANDS:
+        brand_name = brand["name"]
+        brand_id = brand["musinsa_id"]
+        if log_callback:
+            log_callback(f"[리뷰] 무신사 {brand_name} 상품 조회 중...")
+
+        pids = _find_product_ids_via_search(brand_id, brand_name, limit=3)
+        if not pids:
+            if log_callback:
+                log_callback(f"[리뷰] 무신사 {brand_name}: 상품 없음 (brand ID 확인 필요)")
+            continue
+
+        for pid in pids:
+            reviews = _collect_reviews_for_product(pid, brand_name, "무신사")
+            all_results.extend(reviews)
 
     if log_callback:
         log_callback(f"[리뷰] 무신사 전체: {len(all_results)}건")
@@ -130,65 +168,74 @@ def collect_musinsa_reviews(log_callback=None) -> list[dict]:
 
 
 def collect_29cm_reviews(log_callback=None) -> list[dict]:
-    """29CM 자사 브랜드 리뷰 수집"""
     all_results = []
+    headers = {**REQUEST_HEADERS, "Referer": "https://www.29cm.co.kr/"}
 
     for brand in OWN_BRANDS:
         brand_name = brand["name"]
         if log_callback:
             log_callback(f"[리뷰] 29CM {brand_name} 수집 중...")
-        try:
-            search_url = f"https://www.29cm.co.kr/search?keyword={brand_name}&sort=review_count"
-            resp = requests.get(search_url, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT)
-            resp.raise_for_status()
 
-            # __NEXT_DATA__ 시도
-            match = re.search(
-                r'<script[^>]+id="__NEXT_DATA__"[^>]*>(.*?)</script>', resp.text, re.DOTALL
-            )
-            if match:
-                data = json.loads(match.group(1))
-                items = (
-                    data.get("props", {})
-                    .get("pageProps", {})
-                    .get("searchResult", {})
-                    .get("items", [])
+        # 29CM 검색 URL 후보
+        search_urls = [
+            f"https://www.29cm.co.kr/search?keyword={requests.utils.quote(brand_name)}&sort=REVIEW_COUNT",
+            f"https://www.29cm.co.kr/search?keyword={requests.utils.quote(brand_name)}",
+        ]
+        for url in search_urls:
+            try:
+                resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+                if resp.status_code in (404, 410):
+                    continue
+                resp.raise_for_status()
+
+                m = re.search(
+                    r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(.*?)\s*</script>', resp.text, re.DOTALL
                 )
-                for item in items[:3]:
-                    item_no = item.get("itemNo", "")
-                    reviews = item.get("reviews", [])
-                    prod_name = item.get("itemName", "-")
-                    for rev in reviews[:5]:
-                        all_results.append({
-                            "플랫폼": "29CM",
-                            "브랜드": brand_name,
-                            "상품명": prod_name,
-                            "별점": str(rev.get("rating", "-")),
-                            "리뷰내용": rev.get("content", "-")[:200],
-                            "작성일": rev.get("createdAt", "-"),
-                            "수집시각": _now(),
-                        })
-
-        except Exception as e:
-            if log_callback:
-                log_callback(f"[리뷰] 29CM {brand_name} 오류: {e}")
+                if m:
+                    data = json.loads(m.group(1))
+                    # 검색 결과에서 상품 + 리뷰 추출
+                    items = _find_any_items(data)
+                    for item in items[:3]:
+                        item_no = item.get("itemNo", "")
+                        prod_name = item.get("itemName", item.get("name", "-"))
+                        # 리뷰가 아이템 내에 포함된 경우
+                        for rev in item.get("reviews", [])[:5]:
+                            all_results.append({
+                                "플랫폼": "29CM", "브랜드": brand_name,
+                                "상품명": prod_name,
+                                "별점": str(rev.get("rating", "-")),
+                                "리뷰내용": str(rev.get("content", "-"))[:200],
+                                "작성일": rev.get("createdAt", "-"),
+                                "수집시각": _now(),
+                            })
+                break
+            except Exception as e:
+                if log_callback:
+                    log_callback(f"[리뷰] 29CM {brand_name} 오류: {e}")
 
     if log_callback:
         log_callback(f"[리뷰] 29CM 전체: {len(all_results)}건")
     return all_results
 
 
+def _find_any_items(obj, depth=0) -> list:
+    if depth > 8:
+        return []
+    if isinstance(obj, list) and obj and isinstance(obj[0], dict):
+        if any(k in obj[0] for k in ("itemNo", "itemName", "goodsNo", "name")):
+            return obj
+    if isinstance(obj, dict):
+        for v in obj.values():
+            found = _find_any_items(v, depth + 1)
+            if found:
+                return found
+    return []
+
+
 def collect_reviews(log_callback=None) -> list[dict]:
-    """전체 리뷰 수집 (무신사 + 29CM)"""
     all_results = []
     all_results.extend(collect_musinsa_reviews(log_callback=log_callback))
     all_results.extend(collect_29cm_reviews(log_callback=log_callback))
     if log_callback:
         log_callback(f"[리뷰] 전체 완료: {len(all_results)}건")
     return all_results
-
-
-if __name__ == "__main__":
-    data = collect_reviews(log_callback=print)
-    for row in data[:5]:
-        print(row)

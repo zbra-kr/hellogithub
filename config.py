@@ -32,17 +32,20 @@ OWN_BRANDS = [
 ]
 
 # 경쟁사 브랜드 (무신사 브랜드 슬러그)
+# ※ musinsa_id가 404일 경우 검색 폴백으로 자동 전환됩니다.
+#   실제 무신사 브랜드 페이지 URL의 마지막 경로를 확인 후 수정하세요.
+#   예: https://www.musinsa.com/brands/thisisneverthat → "thisisneverthat"
 COMPETITOR_BRANDS = [
     {"name": "마땡킴", "musinsa_id": "mathemkim"},
     {"name": "플리즈노팔로우", "musinsa_id": "pleasenofollow"},
-    {"name": "무신사 스탠다드", "musinsa_id": "musinsa-standard"},
+    {"name": "무신사 스탠다드", "musinsa_id": "musinsastandard"},   # 변경: 하이픈 제거
     {"name": "아디다스", "musinsa_id": "adidas"},
     {"name": "나이키", "musinsa_id": "nike"},
     {"name": "아웃스탠딩", "musinsa_id": "outstanding"},
-    {"name": "닥터마틴", "musinsa_id": "dr-martens"},
-    {"name": "폴로 랄프 로렌", "musinsa_id": "polo-ralph-lauren"},
+    {"name": "닥터마틴", "musinsa_id": "drmartens"},                # 변경: 하이픈 제거
+    {"name": "폴로 랄프 로렌", "musinsa_id": "ralphlauren"},         # 변경: 단순화
     {"name": "아식스", "musinsa_id": "asics"},
-    {"name": "뉴발란스", "musinsa_id": "new-balance"},
+    {"name": "뉴발란스", "musinsa_id": "newbalance"},               # 변경: 하이픈 제거
     {"name": "디스이즈네버댓", "musinsa_id": "thisisneverthat"},
 ]
 
@@ -68,9 +71,11 @@ FASHION_HASHTAGS = [
 GLOBAL_FASHION_FEEDS = [
     {"name": "Vogue", "url": "https://www.vogue.com/feed/rss"},
     {"name": "WWD", "url": "https://wwd.com/feed/"},
-    {"name": "Business of Fashion", "url": "https://www.businessoffashion.com/rss"},
+    {"name": "Business of Fashion", "url": "https://www.businessoffashion.com/articles/feed/"},  # URL 수정
     {"name": "Hypebeast", "url": "https://hypebeast.com/feed"},
     {"name": "Highsnobiety", "url": "https://www.highsnobiety.com/feed/"},
+    {"name": "GQ", "url": "https://www.gq.com/feed/rss"},                  # 추가 (BoF 대체)
+    {"name": "Fashionista", "url": "https://fashionista.com/.rss/full/"},   # 추가
 ]
 
 # 수집 설정
