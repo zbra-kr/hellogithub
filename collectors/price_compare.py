@@ -76,11 +76,11 @@ def _collect_category_prices(category: dict, log_callback=None) -> list[dict]:
     cat_name = category["name"]
     cat_code = category["code"]
 
-    # 카테고리 URL 후보 — 파라미터명이 바뀐 경우 대비
+    # 카테고리 URL 후보 (확인된 /ranking/best 우선)
     urls = [
         f"https://www.musinsa.com/ranking/best?categorySub={cat_code}",
         f"https://www.musinsa.com/ranking/best?category={cat_code}",
-        f"https://www.musinsa.com/category/{cat_code}?sortCode=POPULAR",
+        f"https://www.musinsa.com/ranking?categorySub={cat_code}",
         f"https://www.musinsa.com/search/musinsa/goods?q={requests.utils.quote(cat_name)}&sortCode=POPULAR",
     ]
 

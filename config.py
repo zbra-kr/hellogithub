@@ -9,15 +9,17 @@ OWN_BRANDS = [
         "name": "커버낫",
         "url": "https://covernat.co.kr",
         "best_url": "https://covernat.co.kr/product/best",
-        "musinsa_id": "covernat",
+        "musinsa_id": "covernat",       # https://www.musinsa.com/brand/covernat
+        "cm29_id": "15404",             # https://shop.29cm.co.kr/brand/15404
         "insta": "covernat_official",
-        "naver_store_id": "",  # 네이버 스마트스토어 ID (있으면 입력)
+        "naver_store_id": "",
     },
     {
         "name": "리",
         "url": "https://leekorea.co.kr",
         "best_url": "https://leekorea.co.kr/product/best",
-        "musinsa_id": "leekorea",
+        "musinsa_id": "lee",            # https://www.musinsa.com/brand/lee
+        "cm29_id": "15263",             # https://shop.29cm.co.kr/brand/15263
         "insta": "leekorea_official",
         "naver_store_id": "",
     },
@@ -25,27 +27,25 @@ OWN_BRANDS = [
         "name": "와키윌리",
         "url": "https://wackywilly.co.kr",
         "best_url": "https://wackywilly.co.kr/product/best",
-        "musinsa_id": "wackywilly",
+        "musinsa_id": "wackywilly",     # https://www.musinsa.com/brand/wackywilly
+        "cm29_id": "15237",             # https://shop.29cm.co.kr/brand/15237
         "insta": "wackywilly",
         "naver_store_id": "",
     },
 ]
 
-# 경쟁사 브랜드 (무신사 브랜드 슬러그)
-# ※ musinsa_id가 404일 경우 검색 폴백으로 자동 전환됩니다.
-#   실제 무신사 브랜드 페이지 URL의 마지막 경로를 확인 후 수정하세요.
-#   예: https://www.musinsa.com/brands/thisisneverthat → "thisisneverthat"
+# 경쟁사 브랜드 (무신사 브랜드 슬러그 — /brand/{id} 형식)
 COMPETITOR_BRANDS = [
-    {"name": "마땡킴", "musinsa_id": "mathemkim"},
+    {"name": "마뗑킴",        "musinsa_id": "matinkim"},        # MATIN KIM
     {"name": "플리즈노팔로우", "musinsa_id": "pleasenofollow"},
-    {"name": "무신사 스탠다드", "musinsa_id": "musinsastandard"},   # 변경: 하이픈 제거
-    {"name": "아디다스", "musinsa_id": "adidas"},
-    {"name": "나이키", "musinsa_id": "nike"},
-    {"name": "아웃스탠딩", "musinsa_id": "outstanding"},
-    {"name": "닥터마틴", "musinsa_id": "drmartens"},                # 변경: 하이픈 제거
-    {"name": "폴로 랄프 로렌", "musinsa_id": "ralphlauren"},         # 변경: 단순화
-    {"name": "아식스", "musinsa_id": "asics"},
-    {"name": "뉴발란스", "musinsa_id": "newbalance"},               # 변경: 하이픈 제거
+    {"name": "무신사 스탠다드","musinsa_id": "musinsastandard"},
+    {"name": "아디다스",       "musinsa_id": "adidas"},
+    {"name": "나이키",         "musinsa_id": "nike"},
+    {"name": "아웃스탠딩",     "musinsa_id": "outstanding"},
+    {"name": "닥터마틴",       "musinsa_id": "drmartens"},
+    {"name": "폴로 랄프 로렌", "musinsa_id": "ralphlauren"},
+    {"name": "아식스",         "musinsa_id": "asics"},
+    {"name": "뉴발란스",       "musinsa_id": "newbalance"},
     {"name": "디스이즈네버댓", "musinsa_id": "thisisneverthat"},
 ]
 

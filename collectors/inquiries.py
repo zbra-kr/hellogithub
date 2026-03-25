@@ -47,7 +47,7 @@ def _get_brand_product_ids_musinsa(brand_id: str, brand_name: str = "", limit: i
     """무신사에서 브랜드 상품 ID와 상품명 조회"""
     products = []
     urls = [
-        f"https://www.musinsa.com/brands/{brand_id}/goods",
+        f"https://www.musinsa.com/brand/{brand_id}/goods",
         f"https://www.musinsa.com/search/musinsa/goods?q={requests.utils.quote(brand_name)}&sortCode=NEWEST" if brand_name else "",
     ]
     for url in urls:

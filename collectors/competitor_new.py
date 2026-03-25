@@ -113,8 +113,8 @@ def collect_brand_new_products(brand: dict, log_callback=None) -> list[dict]:
     musinsa_id = brand["musinsa_id"]
 
     urls = [
-        f"https://www.musinsa.com/brands/{musinsa_id}/goods?sortCode=NEWEST",
-        f"https://www.musinsa.com/brands/{musinsa_id}",
+        f"https://www.musinsa.com/brand/{musinsa_id}/goods?sortCode=NEWEST",
+        f"https://www.musinsa.com/brand/{musinsa_id}",
         # slug 오류 대비 — 브랜드명 검색 폴백
         f"https://www.musinsa.com/search/musinsa/goods?q={requests.utils.quote(brand_name)}&sortCode=NEWEST",
     ]

@@ -102,14 +102,14 @@ def _parse_promotions(html: str) -> list[dict]:
 
 def collect_promotions(log_callback=None) -> list[dict]:
     all_results = []
-    # 무신사 이벤트/매거진 URL 후보
+    # 무신사 이벤트/매거진 URL 후보 (확인된 작동 URL 우선)
     urls = [
-        "https://www.musinsa.com/store/magazine",
-        "https://www.musinsa.com/magazine",
+        "https://www.musinsa.com/mz/magazine",   # 확인된 매거진 URL
+        "https://www.musinsa.com/events/raffle",  # 이벤트
+        "https://www.musinsa.com/campaign/payevent/",
+        "https://www.musinsa.com/user/event/friend",
         "https://www.musinsa.com/event",
         "https://www.musinsa.com/sale",
-        "https://www.musinsa.com/store/event",
-        "https://www.musinsa.com/promotion",
     ]
     seen = set()
     for url in urls:

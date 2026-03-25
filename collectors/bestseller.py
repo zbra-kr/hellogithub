@@ -129,10 +129,11 @@ def collect_musinsa_bestseller(log_callback=None) -> list[dict]:
     if log_callback:
         log_callback(f"[베스트셀러] 무신사 수집 중... {'(Playwright)' if _HAS_PW else '(requests)'}")
     ref = "https://www.musinsa.com/"
+    # /ranking/best 확인 완료, /ranking 도 작동
     for url in [
         "https://www.musinsa.com/ranking/best",
         "https://www.musinsa.com/ranking",
-        "https://www.musinsa.com/category/001?sortCode=POPULAR",
+        "https://www.musinsa.com/ranking/archive",
     ]:
         html = _get_html(url,
                          wait_selector="[class*='GoodsItem'],[class*='goods-item'],li[class*='item']",
@@ -152,13 +153,14 @@ def collect_29cm_bestseller(log_callback=None) -> list[dict]:
     if log_callback:
         log_callback(f"[베스트셀러] 29CM 수집 중... {'(Playwright)' if _HAS_PW else '(requests)'}")
     ref = "https://www.29cm.co.kr/"
+    # 실제 작동 URL: /best-items, /store/best-items
     for url in [
-        "https://www.29cm.co.kr/ranking/ranking",
-        "https://www.29cm.co.kr/ranking",
+        "https://shop.29cm.co.kr/best-items",
+        "https://www.29cm.co.kr/store/best-items",
         "https://www.29cm.co.kr/best",
     ]:
         html = _get_html(url,
-                         wait_selector="[class*='RankItem'],[class*='ProductItem'],li[class*='item']",
+                         wait_selector="[class*='RankItem'],[class*='ProductItem'],li[class*='item'],[class*='BestItem']",
                          referer=ref)
         if html:
             r = _parse_html(html, "29CM")
@@ -226,10 +228,44 @@ def collect_own_brand_bestseller(brand: dict, log_callback=None) -> list[dict]:
     return results
 
 
+def collect_29cm_brand_bestseller(brand: dict, log_callback=None) -> list[dict]:
+    """29CM 자사 브랜드 페이지에서 베스트셀러 수집"""
+    results = []
+    brand_name = brand["name"]
+    cm29_id = brand.get("cm29_id", "")
+    if not cm29_id:
+        return results
+
+    ref = "https://www.29cm.co.kr/"
+    for url in [
+        f"https://shop.29cm.co.kr/brand/{cm29_id}",
+        f"https://www.29cm.co.kr/store/brand/{cm29_id}",
+    ]:
+        html = _get_html(url,
+                         wait_selector="[class*='ProductItem'],[class*='GoodsItem'],li[class*='item']",
+                         referer=ref)
+        if not html:
+            continue
+        r = _parse_html(html, "29CM")
+        if r:
+            for item in r:
+                item["브랜드"] = brand_name
+            results = r
+            break
+    if log_callback:
+        log_callback(f"[베스트셀러] 29CM {brand_name}: {len(results)}건 수집")
+    return results
+
+
 def collect_bestseller(log_callback=None) -> list[dict]:
     all_results = []
     all_results.extend(collect_musinsa_bestseller(log_callback=log_callback))
     all_results.extend(collect_29cm_bestseller(log_callback=log_callback))
+    # 29CM 베스트가 0건이면 브랜드 페이지에서 직접 수집
+    cm29_count = sum(1 for r in all_results if r["플랫폼"] == "29CM")
+    if cm29_count == 0:
+        for brand in OWN_BRANDS:
+            all_results.extend(collect_29cm_brand_bestseller(brand, log_callback=log_callback))
     for brand in OWN_BRANDS:
         all_results.extend(collect_own_brand_bestseller(brand, log_callback=log_callback))
     return all_results

@@ -47,7 +47,7 @@ def _find_product_ids_via_search(brand_id: str, brand_name: str, limit: int = 3)
     """무신사 검색으로 자사 브랜드 상품 ID 수집"""
     product_ids = []
     urls = [
-        f"https://www.musinsa.com/brands/{brand_id}/goods",
+        f"https://www.musinsa.com/brand/{brand_id}/goods",
         f"https://www.musinsa.com/search/musinsa/goods?q={requests.utils.quote(brand_name)}&sortCode=NEWEST",
     ]
     for url in urls:
@@ -211,11 +211,18 @@ def collect_29cm_reviews(log_callback=None) -> list[dict]:
 
     for brand in OWN_BRANDS:
         brand_name = brand["name"]
+        cm29_id = brand.get("cm29_id", "")
         if log_callback:
             log_callback(f"[리뷰] 29CM {brand_name} 수집 중... {'(Playwright)' if _HAS_PW else ''}")
 
-        # 29CM 검색 URL 후보
-        search_urls = [
+        # 브랜드 ID로 직접 접근 (더 정확)
+        search_urls = []
+        if cm29_id:
+            search_urls += [
+                f"https://shop.29cm.co.kr/brand/{cm29_id}",
+                f"https://www.29cm.co.kr/store/brand/{cm29_id}",
+            ]
+        search_urls += [
             f"https://www.29cm.co.kr/search?keyword={requests.utils.quote(brand_name)}&sort=REVIEW_COUNT",
             f"https://www.29cm.co.kr/search?keyword={requests.utils.quote(brand_name)}",
         ]
