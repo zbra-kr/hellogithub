@@ -1,55 +1,96 @@
-# config.py - 설정 파일
-
+# config.py
 import os
 
-# 스케줄 설정
-SCHEDULE_TIME = "08:00"  # 매일 실행 시각 (HH:MM)
+SCHEDULE_TIME = "08:00"
 
-# 날씨 설정 (wttr.in 무료 API, 키 불필요)
-WEATHER_CITIES = [
-    {"name": "서울", "query": "Seoul"},
-    {"name": "부산", "query": "Busan"},
+# 자사 브랜드
+OWN_BRANDS = [
+    {
+        "name": "커버낫",
+        "url": "https://covernat.co.kr",
+        "best_url": "https://covernat.co.kr/product/best",
+        "musinsa_id": "covernat",
+        "insta": "covernat_official",
+        "naver_store_id": "",  # 네이버 스마트스토어 ID (있으면 입력)
+    },
+    {
+        "name": "리",
+        "url": "https://leekorea.co.kr",
+        "best_url": "https://leekorea.co.kr/product/best",
+        "musinsa_id": "leekorea",
+        "insta": "leekorea_official",
+        "naver_store_id": "",
+    },
+    {
+        "name": "와키윌리",
+        "url": "https://wackywilly.co.kr",
+        "best_url": "https://wackywilly.co.kr/product/best",
+        "musinsa_id": "wackywilly",
+        "insta": "wackywilly",
+        "naver_store_id": "",
+    },
 ]
 
-# 한국 AI 뉴스 RSS 피드
-KOREAN_AI_NEWS_FEEDS = [
-    {"name": "전자신문", "url": "https://rss.etnews.com/Section901.xml"},
-    {"name": "ZDNet Korea", "url": "https://www.zdnet.co.kr/rss/"},
-    {"name": "연합뉴스 IT", "url": "https://www.yonhapnewstv.co.kr/browse/feeds/rss/category/tech"},
-    {"name": "ITWorld", "url": "https://www.itworld.co.kr/rss.xml"},
-    {"name": "디지털투데이", "url": "http://www.digitaltoday.co.kr/rss/allArticle.xml"},
+# 경쟁사 브랜드 (무신사 브랜드 슬러그)
+COMPETITOR_BRANDS = [
+    {"name": "마땡킴", "musinsa_id": "mathemkim"},
+    {"name": "플리즈노팔로우", "musinsa_id": "pleasenofollow"},
+    {"name": "무신사 스탠다드", "musinsa_id": "musinsa-standard"},
+    {"name": "아디다스", "musinsa_id": "adidas"},
+    {"name": "나이키", "musinsa_id": "nike"},
+    {"name": "아웃스탠딩", "musinsa_id": "outstanding"},
+    {"name": "닥터마틴", "musinsa_id": "dr-martens"},
+    {"name": "폴로 랄프 로렌", "musinsa_id": "polo-ralph-lauren"},
+    {"name": "아식스", "musinsa_id": "asics"},
+    {"name": "뉴발란스", "musinsa_id": "new-balance"},
+    {"name": "디스이즈네버댓", "musinsa_id": "thisisneverthat"},
 ]
 
-# AI 관련 키워드 필터
-AI_KEYWORDS = [
-    "AI", "인공지능", "머신러닝", "딥러닝", "LLM", "챗GPT", "ChatGPT",
-    "GPT", "Claude", "Gemini", "생성형", "자동화", "로봇", "데이터",
-    "반도체", "엔비디아", "NVIDIA", "OpenAI", "Anthropic", "Google AI"
+# 무신사 카테고리 코드 (모든 복종)
+MUSINSA_CATEGORIES = [
+    {"name": "아우터", "code": "001"},
+    {"name": "상의", "code": "002"},
+    {"name": "바지", "code": "003"},
+    {"name": "원피스/스커트", "code": "100"},
+    {"name": "신발", "code": "007"},
+    {"name": "가방", "code": "012"},
+    {"name": "모자", "code": "010"},
+    {"name": "시계/쥬얼리", "code": "014"},
 ]
 
-# 세계 뉴스 RSS 피드
-WORLD_NEWS_FEEDS = [
-    {"name": "BBC News", "url": "https://feeds.bbci.co.uk/news/world/rss.xml"},
-    {"name": "Reuters", "url": "https://feeds.reuters.com/reuters/topNews"},
-    {"name": "AP News", "url": "https://feeds.apnews.com/rss/topnews"},
-    {"name": "CNN", "url": "http://rss.cnn.com/rss/edition_world.rss"},
-    {"name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml"},
+# 패션 트렌드 해시태그
+FASHION_HASHTAGS = [
+    "패션", "오오티디", "OOTD", "streetwear", "코디",
+    "무신사", "커버낫", "캐주얼", "스트릿패션", "신상",
 ]
 
-# 수집 개수 설정
-KOREAN_NEWS_LIMIT = 10    # 한국 AI 뉴스 최대 수집 개수
-WORLD_NEWS_LIMIT = 5      # 세계 뉴스 수집 개수
+# 해외 패션 뉴스 RSS
+GLOBAL_FASHION_FEEDS = [
+    {"name": "Vogue", "url": "https://www.vogue.com/feed/rss"},
+    {"name": "WWD", "url": "https://wwd.com/feed/"},
+    {"name": "Business of Fashion", "url": "https://www.businessoffashion.com/rss"},
+    {"name": "Hypebeast", "url": "https://hypebeast.com/feed"},
+    {"name": "Highsnobiety", "url": "https://www.highsnobiety.com/feed/"},
+]
 
-# 엑셀 저장 경로
-OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "Documents", "RPA_Reports")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# 수집 설정
+BESTSELLER_LIMIT = 20          # 베스트셀러 수집 개수
+COMPETITOR_NEW_LIMIT = 10      # 경쟁사 신상품 수집 개수
+REVIEW_LIMIT = 20              # 리뷰 수집 개수
+WORLD_NEWS_LIMIT = 10          # 해외 뉴스 수집 개수
+PRICE_COMPARE_LIMIT = 10       # 복종당 가격비교 상품 수
 
-# HTTP 요청 설정
-REQUEST_TIMEOUT = 15      # 초
+# HTTP 설정
+REQUEST_TIMEOUT = 15
 REQUEST_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/120.0.0.0 Safari/537.36"
-    )
+    ),
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
 }
+
+OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "Documents", "패션_RPA_리포트")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
