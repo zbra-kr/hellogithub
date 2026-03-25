@@ -8,32 +8,59 @@ from datetime import datetime
 
 from config import OWN_BRANDS, REQUEST_HEADERS, REQUEST_TIMEOUT, REVIEW_LIMIT
 
+try:
+    from utils.browser import fetch_page as _pw_fetch
+    _HAS_PW = True
+except ImportError:
+    _HAS_PW = False
+
 
 def _now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _get_html(url: str, referer: str = "https://www.musinsa.com/") -> str:
+    if _HAS_PW:
+        try:
+            return _pw_fetch(
+                url,
+                wait_selector=(
+                    "[class*='review-item'],[class*='ReviewItem'],"
+                    ".review_list li,[class*='review-list'] li"
+                ),
+                timeout_ms=20000,
+                extra_headers={"Referer": referer},
+            )
+        except Exception:
+            pass
+    try:
+        headers = {**REQUEST_HEADERS, "Referer": referer}
+        resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+        if resp.status_code == 200:
+            return resp.text
+    except Exception:
+        pass
+    return ""
+
+
 def _find_product_ids_via_search(brand_id: str, brand_name: str, limit: int = 3) -> list[str]:
     """무신사 검색으로 자사 브랜드 상품 ID 수집"""
     product_ids = []
-    headers = {**REQUEST_HEADERS, "Referer": "https://www.musinsa.com/"}
     urls = [
         f"https://www.musinsa.com/brands/{brand_id}/goods",
         f"https://www.musinsa.com/search/musinsa/goods?q={requests.utils.quote(brand_name)}&sortCode=NEWEST",
     ]
     for url in urls:
         try:
-            resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT, allow_redirects=True)
-            if resp.status_code in (404, 410):
+            html = _get_html(url)
+            if not html:
                 continue
-            resp.raise_for_status()
 
             # __NEXT_DATA__에서 상품 번호 추출
-            m = re.search(r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(.*?)\s*</script>', resp.text, re.DOTALL)
+            m = re.search(r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(.*?)\s*</script>', html, re.DOTALL)
             if m:
                 try:
                     data = json.loads(m.group(1))
-                    # goodsNo가 포함된 객체 재귀 탐색
                     nos = _extract_goods_nos(data)
                     product_ids.extend(nos[:limit])
                 except Exception:
@@ -41,7 +68,7 @@ def _find_product_ids_via_search(brand_id: str, brand_name: str, limit: int = 3)
 
             # HTML 폴백
             if not product_ids:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = BeautifulSoup(html, "html.parser")
                 for link in soup.select("a[href*='/products/']")[:limit]:
                     m2 = re.search(r"/products/(\d+)", link.get("href", ""))
                     if m2 and m2.group(1) not in product_ids:
@@ -74,7 +101,7 @@ def _extract_goods_nos(obj, result=None, depth=0) -> list[str]:
 def _collect_reviews_for_product(pid: str, brand_name: str, platform: str) -> list[dict]:
     """특정 상품 ID의 리뷰 수집"""
     results = []
-    headers = {**REQUEST_HEADERS, "Referer": f"https://www.musinsa.com/products/{pid}"}
+    referer = f"https://www.musinsa.com/products/{pid}"
 
     if platform == "무신사":
         review_urls = [
@@ -86,9 +113,18 @@ def _collect_reviews_for_product(pid: str, brand_name: str, platform: str) -> li
 
     for url in review_urls:
         try:
+            # JSON API는 requests로만 시도 (Playwright 불필요)
+            headers = {**REQUEST_HEADERS, "Referer": referer}
             resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
             if resp.status_code != 200:
-                continue
+                # HTML 리뷰 페이지는 Playwright로 시도
+                if "reviews" in url:
+                    html = _get_html(url, referer=referer)
+                    if not html:
+                        continue
+                    resp = type("R", (), {"text": html, "status_code": 200})()
+                else:
+                    continue
 
             # JSON API 응답
             try:
@@ -110,11 +146,14 @@ def _collect_reviews_for_product(pid: str, brand_name: str, platform: str) -> li
                     })
                 if results:
                     break
-            except ValueError:
+            except (ValueError, AttributeError):
                 pass
 
             # HTML 파싱 폴백
-            soup = BeautifulSoup(resp.text, "html.parser")
+            html_text = getattr(resp, "text", "")
+            if not html_text and "reviews" in url:
+                html_text = _get_html(url, referer=referer)
+            soup = BeautifulSoup(html_text, "html.parser")
             prod_name_el = soup.select_one("h1,[class*='goods-name'],[class*='product-name']")
             prod_name = prod_name_el.get_text(strip=True) if prod_name_el else "-"
             for sel in [
@@ -169,12 +208,11 @@ def collect_musinsa_reviews(log_callback=None) -> list[dict]:
 
 def collect_29cm_reviews(log_callback=None) -> list[dict]:
     all_results = []
-    headers = {**REQUEST_HEADERS, "Referer": "https://www.29cm.co.kr/"}
 
     for brand in OWN_BRANDS:
         brand_name = brand["name"]
         if log_callback:
-            log_callback(f"[리뷰] 29CM {brand_name} 수집 중...")
+            log_callback(f"[리뷰] 29CM {brand_name} 수집 중... {'(Playwright)' if _HAS_PW else ''}")
 
         # 29CM 검색 URL 후보
         search_urls = [
@@ -183,22 +221,18 @@ def collect_29cm_reviews(log_callback=None) -> list[dict]:
         ]
         for url in search_urls:
             try:
-                resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT, allow_redirects=True)
-                if resp.status_code in (404, 410):
+                html = _get_html(url, referer="https://www.29cm.co.kr/")
+                if not html:
                     continue
-                resp.raise_for_status()
 
                 m = re.search(
-                    r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(.*?)\s*</script>', resp.text, re.DOTALL
+                    r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(.*?)\s*</script>', html, re.DOTALL
                 )
                 if m:
                     data = json.loads(m.group(1))
-                    # 검색 결과에서 상품 + 리뷰 추출
                     items = _find_any_items(data)
                     for item in items[:3]:
-                        item_no = item.get("itemNo", "")
                         prod_name = item.get("itemName", item.get("name", "-"))
-                        # 리뷰가 아이템 내에 포함된 경우
                         for rev in item.get("reviews", [])[:5]:
                             all_results.append({
                                 "플랫폼": "29CM", "브랜드": brand_name,

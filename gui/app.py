@@ -510,4 +510,9 @@ class RPAApp(tk.Tk):
 
     def on_close(self):
         self._stop_scheduler.set()
+        try:
+            from utils.browser import shutdown as _browser_shutdown
+            _browser_shutdown()
+        except Exception:
+            pass
         self.destroy()

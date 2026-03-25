@@ -11,9 +11,39 @@ from config import (
     REQUEST_HEADERS, REQUEST_TIMEOUT, PRICE_COMPARE_LIMIT,
 )
 
+try:
+    from utils.browser import fetch_page as _pw_fetch
+    _HAS_PW = True
+except ImportError:
+    _HAS_PW = False
+
 
 def _now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _get_html(url: str) -> str:
+    if _HAS_PW:
+        try:
+            return _pw_fetch(
+                url,
+                wait_selector=(
+                    "[class*='GoodsItem'],[class*='goods-item'],"
+                    "[class*='RankingItem'],li[class*='item']"
+                ),
+                timeout_ms=20000,
+                extra_headers={"Referer": "https://www.musinsa.com/"},
+            )
+        except Exception:
+            pass
+    try:
+        headers = {**REQUEST_HEADERS, "Referer": "https://www.musinsa.com/"}
+        resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+        if resp.status_code == 200:
+            return resp.text
+    except Exception:
+        pass
+    return ""
 
 
 def _find_product_arrays(obj, depth=0) -> list:
@@ -45,7 +75,6 @@ def _extract_price_int(val) -> int | None:
 def _collect_category_prices(category: dict, log_callback=None) -> list[dict]:
     cat_name = category["name"]
     cat_code = category["code"]
-    headers = {**REQUEST_HEADERS, "Referer": "https://www.musinsa.com/"}
 
     # 카테고리 URL 후보 — 파라미터명이 바뀐 경우 대비
     urls = [
@@ -61,13 +90,12 @@ def _collect_category_prices(category: dict, log_callback=None) -> list[dict]:
 
     for url in urls:
         try:
-            resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT, allow_redirects=True)
-            if resp.status_code in (404, 410):
+            html = _get_html(url)
+            if not html:
                 continue
-            resp.raise_for_status()
 
             # __NEXT_DATA__ 파싱
-            m = re.search(r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(.*?)\s*</script>', resp.text, re.DOTALL)
+            m = re.search(r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(.*?)\s*</script>', html, re.DOTALL)
             if m:
                 try:
                     data = json.loads(m.group(1))
@@ -87,7 +115,7 @@ def _collect_category_prices(category: dict, log_callback=None) -> list[dict]:
 
             # BeautifulSoup 폴백
             if not brand_prices:
-                soup = BeautifulSoup(resp.text, "html.parser")
+                soup = BeautifulSoup(html, "html.parser")
                 for sel in [
                     ".ranking-list__item", ".goods-list__item",
                     "[class*='RankingItem']", "li[class*='list-item']",
