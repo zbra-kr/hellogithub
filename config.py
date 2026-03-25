@@ -71,7 +71,7 @@ FASHION_HASHTAGS = [
 GLOBAL_FASHION_FEEDS = [
     {"name": "Vogue", "url": "https://www.vogue.com/feed/rss"},
     {"name": "WWD", "url": "https://wwd.com/feed/"},
-    {"name": "Business of Fashion", "url": "https://www.businessoffashion.com/articles/feed/"},  # URL 수정
+    {"name": "Business of Fashion", "url": "https://www.businessoffashion.com/feed/"},     # URL 후보1
     {"name": "Hypebeast", "url": "https://hypebeast.com/feed"},
     {"name": "Highsnobiety", "url": "https://www.highsnobiety.com/feed/"},
     {"name": "GQ", "url": "https://www.gq.com/feed/rss"},                  # 추가 (BoF 대체)

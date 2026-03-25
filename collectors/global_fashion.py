@@ -61,25 +61,42 @@ def _parse_rss(xml_text: str, source_name: str) -> list[dict]:
     return results
 
 
+# BoF RSS URL 후보 (사이트가 자주 변경됨)
+_BOF_FALLBACK_URLS = [
+    "https://www.businessoffashion.com/feed/",
+    "https://www.businessoffashion.com/articles/feed/",
+    "https://www.businessoffashion.com/rss/",
+    "https://www.businessoffashion.com/feed.xml",
+    "https://www.businessoffashion.com/news/feed/",
+]
+
+
 def collect_global_fashion(log_callback=None) -> list[dict]:
     """해외 패션 RSS 피드 수집 (Vogue, WWD, BoF, Hypebeast, Highsnobiety)"""
     all_results = []
 
     for feed in GLOBAL_FASHION_FEEDS:
         name = feed["name"]
-        url = feed["url"]
+        urls = _BOF_FALLBACK_URLS if name == "Business of Fashion" else [feed["url"]]
+
         if log_callback:
             log_callback(f"[해외패션] {name} RSS 수집 중...")
-        try:
-            resp = requests.get(url, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT)
-            resp.raise_for_status()
-            items = _parse_rss(resp.text, name)
-            all_results.extend(items)
-            if log_callback:
-                log_callback(f"[해외패션] {name}: {len(items)}건 수집")
-        except Exception as e:
-            if log_callback:
-                log_callback(f"[해외패션] {name} 오류: {e}")
+
+        items = []
+        for url in urls:
+            try:
+                resp = requests.get(url, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT)
+                resp.raise_for_status()
+                items = _parse_rss(resp.text, name)
+                if items:
+                    break
+            except Exception as e:
+                if url == urls[-1] and log_callback:
+                    log_callback(f"[해외패션] {name} 오류: {e}")
+
+        all_results.extend(items)
+        if log_callback:
+            log_callback(f"[해외패션] {name}: {len(items)}건 수집")
 
     if log_callback:
         log_callback(f"[해외패션] 전체 수집 완료: {len(all_results)}건")
