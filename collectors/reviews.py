@@ -44,10 +44,14 @@ def _get_html(url: str, referer: str = "https://www.musinsa.com/") -> str:
 
 
 def _find_product_ids_via_search(brand_id: str, brand_name: str, limit: int = 3) -> list[str]:
-    """무신사 검색으로 자사 브랜드 상품 ID 수집"""
+    """
+    무신사 브랜드 상품 ID 수집.
+    진단 결과: 브랜드 페이지에 a[href*='/products/'] 200개 이상 존재.
+    → 직접 링크 파싱으로 수집.
+    """
     product_ids = []
     urls = [
-        f"https://www.musinsa.com/brand/{brand_id}/goods",
+        f"https://www.musinsa.com/brand/{brand_id}",
         f"https://www.musinsa.com/search/musinsa/goods?q={requests.utils.quote(brand_name)}&sortCode=NEWEST",
     ]
     for url in urls:
@@ -56,23 +60,18 @@ def _find_product_ids_via_search(brand_id: str, brand_name: str, limit: int = 3)
             if not html:
                 continue
 
-            # __NEXT_DATA__에서 상품 번호 추출
-            m = re.search(r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(.*?)\s*</script>', html, re.DOTALL)
-            if m:
-                try:
-                    data = json.loads(m.group(1))
-                    nos = _extract_goods_nos(data)
-                    product_ids.extend(nos[:limit])
-                except Exception:
-                    pass
-
-            # HTML 폴백
-            if not product_ids:
-                soup = BeautifulSoup(html, "html.parser")
-                for link in soup.select("a[href*='/products/']")[:limit]:
-                    m2 = re.search(r"/products/(\d+)", link.get("href", ""))
-                    if m2 and m2.group(1) not in product_ids:
-                        product_ids.append(m2.group(1))
+            # a[href*='/products/'] 직접 파싱 (확인된 방식)
+            soup = BeautifulSoup(html, "html.parser")
+            seen = set()
+            for link in soup.select("a[href*='/products/']"):
+                m = re.search(r"/products/(\d+)", link.get("href", ""))
+                if m:
+                    pid = m.group(1)
+                    if pid not in seen:
+                        seen.add(pid)
+                        product_ids.append(pid)
+                if len(product_ids) >= limit:
+                    break
 
             if product_ids:
                 break

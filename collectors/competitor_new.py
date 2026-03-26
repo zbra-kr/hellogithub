@@ -119,45 +119,77 @@ def _find_product_arrays(obj, depth=0) -> list:
 
 
 def _parse_products(html: str, brand_name: str) -> list[dict]:
+    """
+    무신사 브랜드 페이지 상품 파싱.
+    진단 결과: __NEXT_DATA__에 상품 없음, a[href*='/products/'] 링크 160~212개 존재.
+    → a 태그 직접 순회 방식으로 파싱.
+    """
+    soup = BeautifulSoup(html, "html.parser")
     results = []
+    seen_pids = set()
 
-    # __NEXT_DATA__ JSON 파싱
-    m = re.search(r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(.*?)\s*</script>', html, re.DOTALL)
-    if m:
-        try:
-            data = json.loads(m.group(1))
-            items = _find_product_arrays(data)
-            for item in items[:COMPETITOR_NEW_LIMIT]:
-                r = _normalize_item(item)
-                r["브랜드"] = brand_name
-                results.append(r)
-        except Exception:
-            pass
+    for a_tag in soup.select("a[href*='/products/']"):
+        href = a_tag.get("href", "")
+        m = re.search(r"/products/(\d+)", href)
+        if not m:
+            continue
+        pid = m.group(1)
+        if pid in seen_pids:
+            continue
+        seen_pids.add(pid)
 
-    # BeautifulSoup 폴백
-    if not results:
-        soup = BeautifulSoup(html, "html.parser")
-        for sel in [
-            "[class*='GoodsItem']", "[class*='goods-item']", ".goods-list__item",
-            "[class*='ProductItem']", "li[class*='item']",
-        ]:
-            els = soup.select(sel)
-            if len(els) >= 2:
-                for el in els[:COMPETITOR_NEW_LIMIT]:
-                    name_el = el.select_one("[class*='name'],[class*='title'],strong")
-                    price_el = el.select_one("[class*='price']")
-                    link_el = el.select_one("a[href]")
-                    name = name_el.get_text(strip=True) if name_el else "-"
-                    if name == "-":
-                        continue
-                    results.append({
-                        "브랜드": brand_name, "상품명": name,
-                        "가격": re.sub(r"[^\d,원]", "", price_el.get_text()) if price_el else "-",
-                        "등록일": "-",
-                        "링크": link_el["href"] if link_el else "-",
-                        "수집시각": _now(),
-                    })
+        # a 태그 또는 상위 컨테이너에서 이름/가격 추출
+        # 최대 5단계 상위 탐색하며 상품명 요소 탐색
+        container = a_tag
+        name_el = None
+        price_el = None
+        for _ in range(6):
+            name_el = container.select_one(
+                "[class*='goods_name'],[class*='goodsName'],"
+                "[class*='item_name'],[class*='itemName'],"
+                "[class*='product_name'],[class*='productName']"
+            )
+            price_el = container.select_one(
+                "[class*='price'],[class*='cost'],[class*='Price']"
+            )
+            if name_el:
                 break
+            if container.parent:
+                container = container.parent
+            else:
+                break
+
+        # 상품명 추출
+        if name_el:
+            name = name_el.get_text(strip=True)
+        else:
+            # img alt 또는 a 직접 텍스트 사용
+            img = a_tag.find("img")
+            name = img.get("alt", "").strip() if img else a_tag.get_text(strip=True)[:80]
+
+        name = re.sub(r"\s+", " ", name).strip()
+        if not name or len(name) < 2:
+            continue
+
+        # 가격 추출
+        price_text = ""
+        if price_el:
+            price_text = re.sub(r"[^\d,원]", "", price_el.get_text(strip=True))
+
+        full_link = ("https://www.musinsa.com" + href) if href.startswith("/") else href
+
+        results.append({
+            "브랜드": brand_name,
+            "상품명": name[:100],
+            "가격": price_text or "-",
+            "등록일": "-",
+            "링크": full_link,
+            "수집시각": _now(),
+        })
+
+        if len(results) >= COMPETITOR_NEW_LIMIT:
+            break
+
     return results
 
 

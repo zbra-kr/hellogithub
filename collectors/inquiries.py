@@ -44,75 +44,65 @@ def _get_html(url: str, referer: str = "https://www.musinsa.com/") -> str:
 
 
 def _get_brand_product_ids_musinsa(brand_id: str, brand_name: str = "", limit: int = 3) -> list[tuple[str, str]]:
-    """무신사에서 브랜드 상품 ID와 상품명 조회"""
+    """
+    무신사 브랜드 상품 ID/상품명 조회.
+    진단 결과: a[href*='/products/'] 직접 파싱 방식 사용.
+    """
     products = []
     urls = [
-        f"https://www.musinsa.com/brand/{brand_id}/goods",
+        f"https://www.musinsa.com/brand/{brand_id}",
         f"https://www.musinsa.com/search/musinsa/goods?q={requests.utils.quote(brand_name)}&sortCode=NEWEST" if brand_name else "",
     ]
-    for url in urls:
-        if not url:
-            continue
+    for url in [u for u in urls if u]:
         try:
             html = _get_html(url)
             if not html:
                 continue
 
-            # __NEXT_DATA__ 파싱
-            m = re.search(r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(.*?)\s*</script>', html, re.DOTALL)
-            if m:
-                try:
-                    data = json.loads(m.group(1))
-                    items_list = _find_products(data)
-                    seen = set()
-                    for item in items_list:
-                        pid = str(item.get("goodsNo") or item.get("id") or "")
-                        name = item.get("goodsName") or item.get("name") or f"상품 {pid}"
-                        if pid and pid not in seen:
-                            seen.add(pid)
-                            products.append((pid, str(name)))
-                        if len(products) >= limit:
-                            break
-                except Exception:
-                    pass
+            soup = BeautifulSoup(html, "html.parser")
+            seen = set()
+            for a_tag in soup.select("a[href*='/products/']"):
+                href = a_tag.get("href", "")
+                m = re.search(r"/products/(\d+)", href)
+                if not m:
+                    continue
+                pid = m.group(1)
+                if pid in seen:
+                    continue
+                seen.add(pid)
 
-            # HTML 폴백
-            if not products:
-                soup = BeautifulSoup(html, "html.parser")
-                seen = set()
-                for link in soup.select("a[href*='/products/']"):
-                    href = link.get("href", "")
-                    match = re.search(r"/products/(\d+)", href)
-                    if match:
-                        pid = match.group(1)
-                        if pid not in seen:
-                            seen.add(pid)
-                            name_el = link.select_one("[class*='name'], [class*='title']")
-                            name = name_el.get_text(strip=True) if name_el else f"상품 {pid}"
-                            products.append((pid, name))
-                    if len(products) >= limit:
+                # 상품명 추출 (a 태그 상위 탐색)
+                container = a_tag
+                name_el = None
+                for _ in range(5):
+                    name_el = container.select_one(
+                        "[class*='goods_name'],[class*='goodsName'],"
+                        "[class*='item_name'],[class*='name'],[class*='title']"
+                    )
+                    if name_el:
                         break
+                    if container.parent:
+                        container = container.parent
+                    else:
+                        break
+
+                if name_el:
+                    name = name_el.get_text(strip=True)
+                else:
+                    img = a_tag.find("img")
+                    name = img.get("alt", "").strip() if img else f"상품 {pid}"
+
+                name = re.sub(r"\s+", " ", name).strip() or f"상품 {pid}"
+                products.append((pid, name[:80]))
+
+                if len(products) >= limit:
+                    break
 
             if products:
                 break
         except Exception:
             pass
     return products[:limit]
-
-
-def _find_products(obj, depth=0) -> list:
-    if depth > 8:
-        return []
-    if isinstance(obj, list) and len(obj) >= 1:
-        first = obj[0]
-        if isinstance(first, dict) and any(k in first for k in ("goodsNo", "goodsName", "name", "id")):
-            return obj
-    if isinstance(obj, dict):
-        for v in obj.values():
-            found = _find_products(v, depth + 1)
-            if found:
-                return found
-    return []
 
 
 def collect_musinsa_inquiries(log_callback=None) -> list[dict]:

@@ -95,7 +95,57 @@ def _parse_html(html: str, platform: str) -> list[dict]:
     """__NEXT_DATA__ 또는 HTML에서 상품 목록 파싱"""
     results = []
 
-    # __NEXT_DATA__ JSON 파싱 (Next.js SSR 데이터)
+    # 무신사: a[href*='/products/'] 직접 파싱 (진단 결과 확인)
+    if platform == "무신사":
+        soup = BeautifulSoup(html, "html.parser")
+        seen = set()
+        for i, a_tag in enumerate(soup.select("a[href*='/products/']"), start=1):
+            href = a_tag.get("href", "")
+            m2 = re.search(r"/products/(\d+)", href)
+            if not m2:
+                continue
+            pid = m2.group(1)
+            if pid in seen:
+                continue
+            seen.add(pid)
+            container = a_tag
+            name_el = None
+            for _ in range(6):
+                name_el = container.select_one(
+                    "[class*='goods_name'],[class*='goodsName'],"
+                    "[class*='item_name'],[class*='name'],[class*='title']"
+                )
+                if name_el:
+                    break
+                if container.parent:
+                    container = container.parent
+                else:
+                    break
+            brand_el = container.select_one("[class*='brand']")
+            price_el = container.select_one("[class*='price'],[class*='cost']")
+            if name_el:
+                name = name_el.get_text(strip=True)
+            else:
+                img = a_tag.find("img")
+                name = (img.get("alt", "") if img else a_tag.get_text(strip=True))[:80]
+            name = re.sub(r"\s+", " ", name).strip()
+            if not name or len(name) < 2:
+                continue
+            results.append({
+                "플랫폼": "무신사",
+                "브랜드": brand_el.get_text(strip=True) if brand_el else "-",
+                "상품명": name[:100], "순위": len(results) + 1,
+                "가격": re.sub(r"[^\d,원]", "", price_el.get_text()) if price_el else "-",
+                "할인율": "-",
+                "링크": ("https://www.musinsa.com" + href) if href.startswith("/") else href,
+                "수집시각": _now(),
+            })
+            if len(results) >= BESTSELLER_LIMIT:
+                break
+        if results:
+            return results
+
+    # __NEXT_DATA__ JSON 파싱 (29CM 등)
     m = re.search(r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(.*?)\s*</script>', html, re.DOTALL)
     if m:
         try:
@@ -126,9 +176,51 @@ def _parse_html(html: str, platform: str) -> list[dict]:
         except Exception:
             pass
 
-    # BeautifulSoup 폴백
+    # BeautifulSoup 폴백 (29CM: /product/ or /catalog/ URL 패턴)
     if not results:
         soup = BeautifulSoup(html, "html.parser")
+        # 29CM 상품 링크 패턴: /product/숫자 or /catalog/숫자
+        if platform == "29CM":
+            seen = set()
+            for a_tag in soup.select("a[href*='/product/'],a[href*='/catalog/']"):
+                href = a_tag.get("href", "")
+                m2 = re.search(r"/(product|catalog)/(\d+)", href)
+                if not m2:
+                    continue
+                pid = m2.group(2)
+                if pid in seen:
+                    continue
+                seen.add(pid)
+                container = a_tag
+                for _ in range(5):
+                    name_el = container.select_one("[class*='name'],[class*='title']")
+                    if name_el:
+                        break
+                    if container.parent:
+                        container = container.parent
+                    else:
+                        break
+                price_el = container.select_one("[class*='price'],[class*='cost']")
+                brand_el = container.select_one("[class*='brand']")
+                img = a_tag.find("img")
+                name = (name_el.get_text(strip=True) if name_el else
+                        (img.get("alt", "") if img else a_tag.get_text(strip=True)))
+                name = re.sub(r"\s+", " ", name).strip()
+                if not name or len(name) < 2:
+                    continue
+                full_href = ("https://shop.29cm.co.kr" + href) if href.startswith("/") else href
+                results.append({
+                    "플랫폼": "29CM",
+                    "브랜드": brand_el.get_text(strip=True) if brand_el else "-",
+                    "상품명": name[:100], "순위": len(results) + 1,
+                    "가격": _clean_price(price_el.get_text() if price_el else ""),
+                    "할인율": "-", "링크": full_href, "수집시각": _now(),
+                })
+                if len(results) >= BESTSELLER_LIMIT:
+                    break
+            if results:
+                return results
+
         for sel in [
             "[class*='GoodsItem']", "[class*='goods-item']", ".goods-list__item",
             "[class*='ProductItem']", "[class*='RankItem']", "li[class*='item']",
@@ -183,9 +275,10 @@ def collect_musinsa_bestseller(log_callback=None) -> list[dict]:
         return results
 
     # 2단계: HTML 페이지 (Playwright 또는 requests)
+    # 진단 결과: /ranking/best → 404. 검색 페이지로 대체.
     ref = "https://www.musinsa.com/"
     for url in [
-        "https://www.musinsa.com/ranking/best",
+        "https://www.musinsa.com/search/musinsa/goods?sortCode=POPULAR&page=1",
         "https://www.musinsa.com/ranking",
     ]:
         html = _get_html(url,
@@ -241,9 +334,8 @@ def collect_own_brand_bestseller(brand: dict, log_callback=None) -> list[dict]:
     ]:
         if not url:
             continue
-        html = _get_html(url,
-                         wait_selector=".prdList li,[class*='product-list'] li",
-                         referer=base + "/")
+        # wait_selector 없이 로딩 (leekorea.co.kr 타임아웃 방지)
+        html = _get_html(url, wait_selector=None, referer=base + "/")
         if not html:
             continue
         soup = BeautifulSoup(html, "html.parser")
