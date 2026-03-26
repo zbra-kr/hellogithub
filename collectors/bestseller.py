@@ -8,7 +8,6 @@ from datetime import datetime
 
 from config import OWN_BRANDS, REQUEST_HEADERS, REQUEST_TIMEOUT, BESTSELLER_LIMIT
 
-# Playwright 선택적 사용 (설치된 경우에만)
 try:
     from utils.browser import fetch_page as _pw_fetch
     _HAS_PW = True
@@ -25,11 +24,43 @@ def _clean_price(text: str) -> str:
     return cleaned or "-"
 
 
+_API_HEADERS = {
+    **REQUEST_HEADERS,
+    "Referer": "https://www.musinsa.com/",
+    "Accept": "application/json, text/plain, */*",
+    "x-musinsa-client-type": "web",
+}
+
+
+def _call_musinsa_ranking_api(limit: int = 20) -> list[dict]:
+    """무신사 내부 랭킹 API 직접 호출"""
+    api_urls = [
+        f"https://www.musinsa.com/api/goods/ranking?sortCode=POPULAR&page=1&size={limit}",
+        f"https://api.musinsa.com/api/goods/ranking?page=1&pageSize={limit}&sortCode=POPULAR",
+        f"https://www.musinsa.com/api/ranking?page=1&size={limit}",
+    ]
+    for url in api_urls:
+        try:
+            resp = requests.get(url, headers=_API_HEADERS, timeout=REQUEST_TIMEOUT)
+            if resp.status_code != 200:
+                continue
+            data = resp.json()
+            items = (
+                data.get("data", {}).get("goods") or
+                data.get("data", {}).get("list") or
+                data.get("goods") or data.get("list") or []
+            )
+            if items:
+                return items
+        except Exception:
+            pass
+    return []
+
+
 def _get_html(url: str, wait_selector: str = None, referer: str = "") -> str:
-    """Playwright 우선, 실패/미설치 시 requests 폴백"""
     if _HAS_PW:
         try:
-            return _pw_fetch(url, wait_selector=wait_selector, timeout_ms=20000,
+            return _pw_fetch(url, wait_selector=wait_selector, timeout_ms=25000,
                              extra_headers={"Referer": referer})
         except Exception:
             pass
@@ -128,12 +159,34 @@ def _parse_html(html: str, platform: str) -> list[dict]:
 def collect_musinsa_bestseller(log_callback=None) -> list[dict]:
     if log_callback:
         log_callback(f"[베스트셀러] 무신사 수집 중... {'(Playwright)' if _HAS_PW else '(requests)'}")
+
+    # 1단계: 내부 API 직접 호출
+    raw_items = _call_musinsa_ranking_api(limit=BESTSELLER_LIMIT)
+    if raw_items:
+        results = []
+        for i, item in enumerate(raw_items[:BESTSELLER_LIMIT], start=1):
+            name = (item.get("goodsName") or item.get("name") or "-")
+            brand = (item.get("brandName") or
+                     (item.get("brand", {}).get("name") if isinstance(item.get("brand"), dict) else "-"))
+            price = item.get("normalPrice") or item.get("price") or item.get("salePrice") or "-"
+            goods_no = item.get("goodsNo") or item.get("id") or ""
+            results.append({
+                "플랫폼": "무신사", "브랜드": str(brand or "-"), "상품명": str(name),
+                "순위": i,
+                "가격": f"{int(price):,}원" if isinstance(price, (int, float)) else str(price),
+                "할인율": f"{item.get('discountRate', '-')}%",
+                "링크": f"https://www.musinsa.com/products/{goods_no}" if goods_no else "-",
+                "수집시각": _now(),
+            })
+        if log_callback:
+            log_callback(f"[베스트셀러] 무신사: {len(results)}건 수집 (API)")
+        return results
+
+    # 2단계: HTML 페이지 (Playwright 또는 requests)
     ref = "https://www.musinsa.com/"
-    # /ranking/best 확인 완료, /ranking 도 작동
     for url in [
         "https://www.musinsa.com/ranking/best",
         "https://www.musinsa.com/ranking",
-        "https://www.musinsa.com/ranking/archive",
     ]:
         html = _get_html(url,
                          wait_selector="[class*='GoodsItem'],[class*='goods-item'],li[class*='item']",
@@ -145,7 +198,7 @@ def collect_musinsa_bestseller(log_callback=None) -> list[dict]:
                     log_callback(f"[베스트셀러] 무신사: {len(r)}건 수집")
                 return r
     if log_callback:
-        log_callback("[베스트셀러] 무신사: 0건 (URL 확인 필요)")
+        log_callback("[베스트셀러] 무신사: 0건 (Playwright 설치 후 재시도)")
     return []
 
 

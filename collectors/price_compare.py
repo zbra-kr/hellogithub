@@ -22,6 +22,40 @@ def _now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+_API_HEADERS = {
+    **REQUEST_HEADERS,
+    "Referer": "https://www.musinsa.com/",
+    "Accept": "application/json, text/plain, */*",
+    "x-musinsa-client-type": "web",
+}
+
+
+def _call_category_api(cat_code: str, cat_name: str, limit: int = 20) -> list:
+    """무신사 카테고리 내부 API 직접 호출"""
+    api_urls = [
+        f"https://www.musinsa.com/api/goods/ranking?categorySub={cat_code}&sortCode=POPULAR&page=1&size={limit}",
+        f"https://www.musinsa.com/api/goods/ranking?category={cat_code}&sortCode=POPULAR&page=1&size={limit}",
+        f"https://api.musinsa.com/api/goods?categorySub={cat_code}&sortCode=POPULAR&page=1&pageSize={limit}",
+        f"https://www.musinsa.com/api/search/goods?q={requests.utils.quote(cat_name)}&categorySub={cat_code}&sortCode=POPULAR&page=1&size={limit}",
+    ]
+    for url in api_urls:
+        try:
+            resp = requests.get(url, headers=_API_HEADERS, timeout=REQUEST_TIMEOUT)
+            if resp.status_code != 200:
+                continue
+            data = resp.json()
+            items = (
+                data.get("data", {}).get("goods") or
+                data.get("data", {}).get("list") or
+                data.get("goods") or data.get("list") or []
+            )
+            if items:
+                return items
+        except Exception:
+            pass
+    return []
+
+
 def _get_html(url: str) -> str:
     if _HAS_PW:
         try:
@@ -76,6 +110,36 @@ def _collect_category_prices(category: dict, log_callback=None) -> list[dict]:
     cat_name = category["name"]
     cat_code = category["code"]
 
+    own_names = {b["name"] for b in OWN_BRANDS}
+    comp_names = {b["name"] for b in COMPETITOR_BRANDS}
+    brand_prices: dict[str, list[int]] = {}
+
+    # 1단계: 내부 API 직접 호출
+    raw_items = _call_category_api(cat_code, cat_name, limit=PRICE_COMPARE_LIMIT * 3)
+    for item in raw_items:
+        b_name = (
+            item.get("brandName") or
+            (item.get("brand", {}).get("name") if isinstance(item.get("brand"), dict) else None) or ""
+        )
+        price = _extract_price_int(
+            item.get("normalPrice") or item.get("price") or item.get("salePrice")
+        )
+        if b_name and price:
+            brand_prices.setdefault(b_name, []).append(price)
+
+    if brand_prices:
+        results = []
+        for b_name, prices in brand_prices.items():
+            b_type = "자사" if b_name in own_names else ("경쟁사" if b_name in comp_names else "기타")
+            results.append({
+                "복종": cat_name, "브랜드": b_name, "브랜드유형": b_type,
+                "평균가": f"{int(sum(prices)/len(prices)):,}원",
+                "최저가": f"{min(prices):,}원", "최고가": f"{max(prices):,}원",
+                "상품수": len(prices), "수집시각": _now(),
+            })
+        return results
+
+    # 2단계: HTML 폴백 (Playwright 또는 requests)
     # 카테고리 URL 후보 (확인된 /ranking/best 우선)
     urls = [
         f"https://www.musinsa.com/ranking/best?categorySub={cat_code}",
@@ -83,10 +147,6 @@ def _collect_category_prices(category: dict, log_callback=None) -> list[dict]:
         f"https://www.musinsa.com/ranking?categorySub={cat_code}",
         f"https://www.musinsa.com/search/musinsa/goods?q={requests.utils.quote(cat_name)}&sortCode=POPULAR",
     ]
-
-    own_names = {b["name"] for b in OWN_BRANDS}
-    comp_names = {b["name"] for b in COMPETITOR_BRANDS}
-    brand_prices: dict[str, list[int]] = {}
 
     for url in urls:
         try:
